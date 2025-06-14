@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>แผนที่กล้อง CCTV อำเภอร่อนพิบูลย์</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Kanit', sans-serif;
+        }
+        #container {
+            display: flex;
+            height: 100vh;
+            position: relative;
+        }
+        #map {
+            flex: 1;
+            height: 100%;
+        }
+        #sidebar {
+            width: 300px;
+            background: #f5f5f5;
+            padding: 10px;
+            overflow-y: auto;
+            box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+            position: absolute;
+            right: -270px;
+            top: 0;
+            bottom: 0;
+            transition: right 0.3s ease;
+            z-index: 1000;
+        }
+        #sidebar:hover {
+            right: 0;
+        }
+        #sidebar-toggle {
+            position: absolute;
+            left: -30px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 30px;
+            height: 60px;
+            background: #f5f5f5;
+            border-radius: 5px 0 0 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+        }
+        #sidebar-toggle::after {
+            content: "☰";
+            font-size: 20px;
+        }
+        .info {
+            padding: 6px 8px;
+            font: 14px/16px Arial, Helvetica, sans-serif;
+            background: white;
+            background: rgba(255,255,255,0.8);
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            border-radius: 5px;
+        }
+        .info h4 {
+            margin: 0 0 5px;
+            color: #777;
+        }
+        .legend {
+            line-height: 18px;
+            color: #555;
+        }
+        .legend i {
+            width: 18px;
+            height: 18px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.7;
+        }
+        .tambon-group {
+            margin-bottom: 15px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+        }
+        .tambon-title {
+            font-weight: bold;
+            color: #2c3e50;
+            cursor: pointer;
+            padding: 5px;
+            background: #eaeaea;
+            border-radius: 3px;
+        }
+        .tambon-title:hover {
+            background: #ddd;
+        }
+        .camera-item {
+            padding: 5px 5px 5px 20px;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+        }
+        .camera-item:hover {
+            background: #e0e0e0;
+            border-left: 3px solid #3498db;
+        }
+        .map-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 5px;
+            border-radius: 5px;
+            box-shadow: 0 0 5px rgba(0,0,0,0.2);
+        }
+        .map-type-btn {
+            padding: 5px 10px;
+            margin: 2px;
+            cursor: pointer;
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        .map-type-btn.active {
+            background: #3498db;
+            color: white;
+            border-color: #2980b9;
+        }
+        .search-box {
+            margin-bottom: 15px;
+        }
+        .search-box input {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="map"></div>
+        <div id="sidebar">
+            <div id="sidebar-toggle"></div>
+            <h3>กล้อง CCTV อำเภอร่อนพิบูลย์</h3>
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="ค้นหาตำบลหรือชื่อกล้อง...">
+            </div>
+            <div id="tambonList"></div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    
+    <script>
+        // Initialize the map
+        var map = L.map('map').setView([8.2, 99.87], 12);
+
+        // Define map layers
+        var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        });
+
+        var satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        });
+
+        var hybridLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', {
+            subdomains: ['mt0','mt1','mt2','mt3'],
+            attribution: '&copy; Google'
+        });
+
+        // Add default layer
+        osmLayer.addTo(map);
+
+        // Camera icon
+        var cameraIcon = L.icon({
+            iconUrl: 'https://i.ibb.co/mf8MtwZ/camera.png',
+            iconSize: [32, 32],
+            iconAnchor: [16, 32],
+            popupAnchor: [0, -32]
+        });
+
+        // Complete location data from the PDF
+        var locations = [
+            // ทินตก
+            {code: "K0101", name: "ฝายชะลอน้ำคลองพุดหง", lat: 8.235518, lng: 99.876593, tambon: "ทินตก"},
+            {code: "K0102", name: "สามแยกถนนเที่ยงธรรม", lat: 8.249495, lng: 99.883162, tambon: "ทินตก"},
+            {code: "K0103", name: "ฝายเฉลิมพระเกียรติ คลองพุดหง", lat: 8.237825, lng: 99.882457, tambon: "ทินตก"},
+            {code: "K0104", name: "สามแยกพุดหง-สามร้อย", lat: 8.219478, lng: 99.876530, tambon: "ทินตก"},
+            {code: "K0105", name: "จุดกลับรถถนนเพชรเกษม (นครศรีฯ-ร้อนฯ)", lat: 8.256717, lng: 99.893698, tambon: "ทินตก"},
+            {code: "K0106", name: "สวนสาธารณะเทศบาลทินตก (เสาที่ 1)", lat: 8.226770, lng: 99.871560, tambon: "ทินตก"},
+            
+            // ควนซุม
+            {code: "K0201", name: "สามแยกวัวหลุง (เสาที่ 3)", lat: 8.144307, lng: 99.926195, tambon: "ควนซุม"},
+            {code: "K0202", name: "สามแยกนึงได้ (เสาที่ 1)", lat: 8.141632, lng: 99.908993, tambon: "ควนซุม"},
+            {code: "K0203", name: "สี่แยก รพ.สต.ทุ่งหล่อ (เสาที่ 3)", lat: 8.224956, lng: 99.913366, tambon: "ควนซุม"},
+            {code: "K0204", name: "สี่แยกทุ่งคา-เนินบ้านจันทร์ (เสาที่ 1)", lat: 8.221292, lng: 99.923484, tambon: "ควนซุม"},
+            {code: "K0205", name: "สามแยกเกยเชน (เสาที่ 2)", lat: 8.192002, lng: 99.901305, tambon: "ควนซุม"},
+            {code: "K0206", name: "สามแยกซอยสนิท 1 (เสาที่ 2)", lat: 8.159967, lng: 99.926649, tambon: "ควนซุม"},
+            {code: "K0207", name: "สี่แยกหอประชุมหมู่บ้าน (เสาที่ 2)", lat: 8.150687, lng: 99.925649, tambon: "ควนซุม"},
+            
+            // ร่อนพิบูลย์ (กลุ่มแรก)
+            {code: "K0301", name: "จุดกลับรถโคกยาง", lat: 8.145022, lng: 99.809446, tambon: "ร่อนพิบูลย์"},
+            {code: "K0302", name: "ซอยสวนเลา", lat: 8.144085, lng: 99.806614, tambon: "ร่อนพิบูลย์"},
+            {code: "K0303", name: "สามแยกวัตสุวรรณรังสี", lat: 8.142307, lng: 99.808048, tambon: "ร่อนพิบูลย์"},
+            {code: "K0304", name: "ยูเกิร์นหน้าตลาดโคกยาง (เสาที่ 2)", lat: 8.145566, lng: 99.809821, tambon: "ร่อนพิบูลย์"},
+            {code: "K0305", name: "สามแยกหนองเป็ด (เลี้ยบรางรถไฟ) (เสาที่ 2)", lat: 8.151368, lng: 99.828579, tambon: "ร่อนพิบูลย์"},
+            {code: "K0306", name: "สี่แยกทางเข้าริงเรียนครูณศึกษา", lat: 8.152139, lng: 99.831040, tambon: "ร่อนพิบูลย์"},
+            {code: "K0307", name: "สามแยกใต้สะพานเขาน้อย (เสาที่ 2)", lat: 8.154546, lng: 99.838019, tambon: "ร่อนพิบูลย์"},
+            {code: "K0308", name: "จุดกลับรถหน้า ร.ร.วัดเทพพนมเช็อค (เสาที่ 1)", lat: 8.162499, lng: 99.849945, tambon: "ร่อนพิบูลย์"},
+            {code: "K0309", name: "ซอยหน้าบ้านนางนันทา เกิดรัตนพงค์", lat: 8.154595, lng: 99.849253, tambon: "ร่อนพิบูลย์"},
+            {code: "K0310", name: "ทางเข้าตลาดใหม่ (เสาที่ 1)", lat: 8.151617, lng: 99.832191, tambon: "ร่อนพิบูลย์"},
+            {code: "K0311", name: "ทางออกด้านหลังตลาดใหม่ (เสาที่ 2)", lat: 8.149118, lng: 99.832714, tambon: "ร่อนพิบูลย์"},
+            {code: "K0312", name: "หน้า ร.ร.พิศาลนฤมิตร (เสาที่ 1)", lat: 8.185006, lng: 99.857249, tambon: "ร่อนพิบูลย์"},
+            {code: "K0313", name: "หน้า ร.ร.พิศาลนฤมิตร (เสาที่ 2)", lat: 8.184578, lng: 99.857290, tambon: "ร่อนพิบูลย์"},
+            {code: "K0314", name: "หลังวัดพิศาล (เสาที่ 2)", lat: 8.182250, lng: 99.859172, tambon: "ร่อนพิบูลย์"},
+            {code: "K0316", name: "ลี่แยกบ้านนายสมพร", lat: 8.177995, lng: 99.857298, tambon: "ร่อนพิบูลย์"},
+            {code: "K0317", name: "ซอยพูนทรัพย์", lat: 8.175264, lng: 99.85959, tambon: "ร่อนพิบูลย์"},
+            {code: "K0318", name: "หน้าการไฟฟ้าร่อนพิบูลย์", lat: 8.167553, lng: 99.851617, tambon: "ร่อนพิบูลย์"},
+            {code: "K0319", name: "สามแยกปริชาทอง (เสาที่ 2)", lat: 8.172372, lng: 99.850871, tambon: "ร่อนพิบูลย์"},
+            {code: "K0320", name: "ลี่แยกเมษา (เสาที่ 2)", lat: 8.176376, lng: 99.846704, tambon: "ร่อนพิบูลย์"},
+            {code: "K0321", name: "สามแยกหน้าทิน-นายเพี้ยน", lat: 8.178505, lng: 99.850945, tambon: "ร่อนพิบูลย์"},
+            {code: "K0322", name: "สามแยกประเดติ", lat: 8.185275, lng: 99.846922, tambon: "ร่อนพิบูลย์"},
+            
+            // หินดก
+            {code: "K0401", name: "แยกปลายราง-ฉลุงทอง", lat: 8.265005, lng: 99.861460, tambon: "หินดก"},
+            {code: "K0402", name: "หน้าวัดลุงทอง", lat: 8.305564, lng: 99.859849, tambon: "หินดก"},
+            {code: "K0403", name: "แยกทางขึ้นบ้านเขาวัง", lat: 8.280249, lng: 99.841531, tambon: "หินดก"},
+            {code: "K0404", name: "แยกทางเข้าวัดวิภาวดี", lat: 8.277938, lng: 99.831255, tambon: "หินดก"},
+            {code: "K0405", name: "ลี่แยกภูธาร", lat: 8.265471, lng: 99.835276, tambon: "หินดก"},
+            {code: "K0406", name: "ลี่แยกปิดโวก", lat: 8.229075, lng: 99.850350, tambon: "หินดก"},
+            {code: "K0407", name: "สามแยกไสหญ้าหวาย", lat: 8.214968, lng: 99.893246, tambon: "หินดก"},
+            {code: "K0408", name: "แยกบ้านนายประสาน น้ำขาว", lat: 8.225234, lng: 99.886056, tambon: "หินดก"},
+            {code: "K0409", name: "ลี่แยกไทรทอง", lat: 8.236117, lng: 99.897475, tambon: "หินดก"},
+            {code: "K0410", name: "แยกทางเข้ามัสยิด (ศาลาแจก)", lat: 8.258956, lng: 99.874218, tambon: "หินดก"},
+            
+            // ร่อนพิบูลย์ (กลุ่มสอง)
+            {code: "K0501", name: "สามแยกหอประชุม", lat: 8.182321, lng: 99.871301, tambon: "ร่อนพิบูลย์"},
+            {code: "K0502", name: "สามแยกหัวเหมือง", lat: 8.188787, lng: 99.836401, tambon: "ร่อนพิบูลย์"},
+            {code: "K0503", name: "สามแยกหน้าป้อม", lat: 8.217995, lng: 99.836098, tambon: "ร่อนพิบูลย์"},
+            {code: "K0504", name: "สามแยกบ้านหัวเลี้ยว", lat: 8.158229, lng: 99.876419, tambon: "ร่อนพิบูลย์"},
+            {code: "K0505", name: "หอประชุมหมู่บ้าน", lat: 8.154461, lng: 99.861794, tambon: "ร่อนพิบูลย์"},
+            {code: "K0506", name: "สามแยกถนนฟอท่านคล้าย-สามแยกรังไทร", lat: 8.151775, lng: 99.857786, tambon: "ร่อนพิบูลย์"},
+            {code: "K0507", name: "ซอยหินลับ", lat: 8.161719, lng: 99.832849, tambon: "ร่อนพิบูลย์"},
+            {code: "K0508", name: "สามแยกปากทางรถจิ๊บ", lat: 8.139444, lng: 99.788880, tambon: "ร่อนพิบูลย์"},
+            {code: "K0509", name: "สามแยกป้อม", lat: 8.202440, lng: 99.867591, tambon: "ร่อนพิบูลย์"},
+            {code: "K0510", name: "สามแยกซอยลุงลื่น", lat: 8.152574, lng: 99.806604, tambon: "ร่อนพิบูลย์"},
+            {code: "K0511", name: "ลี่แยกห้วยไม้แก่น", lat: 8.25159, lng: 99.837707, tambon: "ร่อนพิบูลย์"},
+            {code: "K0512", name: "สามแยกปากทางเข้นรีอนจิเขาหมาก", lat: 8.202251, lng: 99.862984, tambon: "ร่อนพิบูลย์"},
+            {code: "K0514", name: "สามแยกหน้าวัดเนกขันมาราม", lat: 8.144233, lng: 99.832135, tambon: "ร่อนพิบูลย์"},
+            {code: "K0515", name: "สิ่แยกไสยาว-ในป้อง", lat: 8.187743, lng: 99.872906, tambon: "ร่อนพิบูลย์"},
+            {code: "K0516", name: "สามแยกถนนเลียบคลอง", lat: 8.196356, lng: 99.872968, tambon: "ร่อนพิบูลย์"},
+            
+            // ควนพัง
+            {code: "K0601", name: "แยกเขาชุมทอง-บ้านกุมแป-ปลวกขาว", lat: 8.135429, lng: 99.951463, tambon: "ควนพัง"},
+            {code: "K0602", name: "ศาลาไม้ไผ่", lat: 8.130476, lng: 99.960289, tambon: "ควนพัง"},
+            {code: "K0603", name: "บ้านโคกมะกรูด", lat: 8.149633, lng: 99.963256, tambon: "ควนพัง"},
+            {code: "K0604", name: "บ้านปลายสระ", lat: 8.189245, lng: 99.942484, tambon: "ควนพัง"},
+            {code: "K0605", name: "บ้านกลอง", lat: 8.218085, lng: 99.945939, tambon: "ควนพัง"},
+            {code: "K0606", name: "บ้านหัวข่อย", lat: 8.154120, lng: 99.949714, tambon: "ควนพัง"},
+            {code: "K0607", name: "บ้านบ่อโพธิ์", lat: 8.146052, lng: 99.934821, tambon: "ควนพัง"},
+            {code: "K0608", name: "บ้านด่าน", lat: 8.192274, lng: 99.952024, tambon: "ควนพัง"},
+            
+            // เสาธง
+            {code: "K0701", name: "สิ่แยกกุโบร์", lat: 8.271293, lng: 99.891819, tambon: "เสาธง"},
+            {code: "K0702", name: "แยกซอยศาลาแจก", lat: 8.272620, lng: 99.882320, tambon: "เสาธง"},
+            {code: "K0703", name: "แยกซอยบ้านท่าข้าม", lat: 8.283820, lng: 99.875290, tambon: "เสาธง"},
+            {code: "K0704", name: "แยกทางเข้าก้านป่าแชง", lat: 8.270270, lng: 99.901927, tambon: "เสาธง"},
+            {code: "K0705", name: "สามแยกบ้านป่าแชง", lat: 8.241687, lng: 99.912054, tambon: "เสาธง"},
+            {code: "K0706", name: "สามแยกหน้าฝื่อน", lat: 8.275541, lng: 99.914143, tambon: "เสาธง"},
+            
+            // ควนเกย
+            {code: "K0801", name: "สามแยกอ่างน้ำควนเกย", lat: 8.127968, lng: 99.890758, tambon: "ควนเกย"},
+            {code: "K0802", name: "สามแยกบ้านสวนทุเรียน", lat: 8.152902, lng: 99.896867, tambon: "ควนเกย"},
+            {code: "K0803", name: "สิ่แยกบ้านสวนทุเรียน บ้านปิง,บ้านเพิ่ง", lat: 8.153436, lng: 99.901953, tambon: "ควนเกย"},
+            {code: "K0804", name: "สามแยกบ้านห้วยจิก", lat: 8.115203, lng: 99.893228, tambon: "ควนเกย"},
+            {code: "K0805", name: "สามแยกบ้านไสเลียบ", lat: 8.124346, lng: 99.911435, tambon: "ควนเกย"},
+            {code: "K0806", name: "สามแยกบ้านทุ่งหนองจอก", lat: 8.146968, lng: 99.902385, tambon: "ควนเกย"},
+            {code: "K0807", name: "สามแยกหลังวัดเทพมงคล", lat: 8.154772, lng: 99.880889, tambon: "ควนเกย"},
+            {code: "K0808", name: "สามแยกบ้านห้วยคันไถ", lat: 8.131969, lng: 99.911185, tambon: "ควนเกย"}
+        ];
+
+        // Group locations by tambon
+        var tambons = {};
+        locations.forEach(function(location) {
+            if (!tambons[location.tambon]) {
+                tambons[location.tambon] = [];
+            }
+            tambons[location.tambon].push(location);
+        });
+
+        // Create markers and store references
+        var markers = {};
+        locations.forEach(function(location) {
+            var marker = L.marker([location.lat, location.lng], {icon: cameraIcon})
+                .addTo(map)
+                .bindPopup(`<b>รหัส:</b> ${location.code}<br><b>ชื่อ:</b> ${location.name}<br><b>ตำบล:</b> ${location.tambon}`);
+            
+            markers[location.code] = marker;
+        });
+
+        // Create sidebar content
+        var tambonList = document.getElementById('tambonList');
+        
+        for (var tambon in tambons) {
+            var tambonGroup = document.createElement('div');
+            tambonGroup.className = 'tambon-group';
+            
+            var tambonTitle = document.createElement('div');
+            tambonTitle.className = 'tambon-title';
+            tambonTitle.textContent = 'ตำบล' + tambon + ' (' + tambons[tambon].length + ')';
+            
+            var cameraList = document.createElement('div');
+            cameraList.className = 'camera-list';
+            
+            tambons[tambon].forEach(function(location) {
+                var cameraItem = document.createElement('div');
+                cameraItem.className = 'camera-item';
+                cameraItem.textContent = location.code + ' - ' + location.name;
+                cameraItem.onclick = function() {
+                    map.setView([location.lat, location.lng], 16);
+                    markers[location.code].openPopup();
+                    resetSidebarTimer();
+                };
+                cameraItem.onmouseover = resetSidebarTimer;
+                cameraList.appendChild(cameraItem);
+            });
+            
+            tambonTitle.onclick = function() {
+                if (cameraList.style.display === 'none') {
+                    cameraList.style.display = 'block';
+                } else {
+                    cameraList.style.display = 'none';
+                }
+                resetSidebarTimer();
+            };
+            
+            tambonTitle.onmouseover = resetSidebarTimer;
+            
+            tambonGroup.appendChild(tambonTitle);
+            tambonGroup.appendChild(cameraList);
+            tambonList.appendChild(tambonGroup);
+        }
+
+        // Add map type controls
+        var mapControls = document.createElement('div');
+        mapControls.className = 'map-controls';
+        
+        var osmBtn = document.createElement('button');
+        osmBtn.className = 'map-type-btn active';
+        osmBtn.textContent = 'แผนที่ถนน';
+        osmBtn.onclick = function() {
+            map.removeLayer(satelliteLayer);
+            map.removeLayer(hybridLayer);
+            map.addLayer(osmLayer);
+            setActiveBtn(osmBtn);
+            resetSidebarTimer();
+        };
+        
+        var satelliteBtn = document.createElement('button');
+        satelliteBtn.className = 'map-type-btn';
+        satelliteBtn.textContent = 'แผนที่ดาวเทียม';
+        satelliteBtn.onclick = function() {
+            map.removeLayer(osmLayer);
+            map.removeLayer(hybridLayer);
+            map.addLayer(satelliteLayer);
+            setActiveBtn(satelliteBtn);
+            resetSidebarTimer();
+        };
+        
+        var hybridBtn = document.createElement('button');
+        hybridBtn.className = 'map-type-btn';
+        hybridBtn.textContent = 'แผนที่ไฮบริด';
+        hybridBtn.onclick = function() {
+            map.removeLayer(osmLayer);
+            map.removeLayer(satelliteLayer);
+            map.addLayer(hybridLayer);
+            setActiveBtn(hybridBtn);
+            resetSidebarTimer();
+        };
+        
+        mapControls.appendChild(osmBtn);
+        mapControls.appendChild(satelliteBtn);
+        mapControls.appendChild(hybridBtn);
+        
+        document.body.appendChild(mapControls);
+        
+        function setActiveBtn(btn) {
+            var btns = document.querySelectorAll('.map-type-btn');
+            btns.forEach(function(button) {
+                button.classList.remove('active');
+            });
+            btn.classList.add('active');
+        }
+
+        // Add search functionality
+        var searchInput = document.getElementById('searchInput');
+        searchInput.addEventListener('input', function() {
+            var searchTerm = this.value.toLowerCase();
+            var tambonGroups = document.querySelectorAll('.tambon-group');
+            
+            tambonGroups.forEach(function(group) {
+                var tambonTitle = group.querySelector('.tambon-title').textContent.toLowerCase();
+                var cameraItems = group.querySelectorAll('.camera-item');
+                var hasMatch = false;
+                
+                cameraItems.forEach(function(item) {
+                    var itemText = item.textContent.toLowerCase();
+                    if (itemText.includes(searchTerm) || tambonTitle.includes(searchTerm)) {
+                        item.style.display = 'block';
+                        hasMatch = true;
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
+                
+                if (hasMatch || tambonTitle.includes(searchTerm)) {
+                    group.style.display = 'block';
+                    group.querySelector('.camera-list').style.display = 'block';
+                } else {
+                    group.style.display = 'none';
+                }
+            });
+            resetSidebarTimer();
+        });
+
+        // Sidebar hover and auto-hide functionality
+        var sidebar = document.getElementById('sidebar');
+        var sidebarTimeout;
+        
+        function showSidebar() {
+            sidebar.style.right = '0';
+            resetSidebarTimer();
+        }
+        
+        function hideSidebar() {
+            sidebar.style.right = '-270px';
+        }
+        
+        function resetSidebarTimer() {
+            clearTimeout(sidebarTimeout);
+            sidebarTimeout = setTimeout(hideSidebar, 10000); // 10 seconds
+        }
+        
+        sidebar.addEventListener('mouseenter', function() {
+            showSidebar();
+            clearTimeout(sidebarTimeout);
+        });
+        
+        sidebar.addEventListener('mouseleave', function() {
+            resetSidebarTimer();
+        });
+        
+        document.getElementById('sidebar-toggle').addEventListener('click', function() {
+            if (sidebar.style.right === '0px') {
+                hideSidebar();
+            } else {
+                showSidebar();
+            }
+        });
+        
+        // Hide sidebar initially after 3 seconds
+        setTimeout(hideSidebar, 3000);
+        
+        // Reset timer on map interaction
+        map.on('click', resetSidebarTimer);
+        map.on('move', resetSidebarTimer);
+        map.on('zoom', resetSidebarTimer);
+    </script>
+</body>
+</html>
